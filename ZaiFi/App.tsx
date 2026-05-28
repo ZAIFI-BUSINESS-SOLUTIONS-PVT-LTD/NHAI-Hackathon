@@ -8,18 +8,23 @@ import { HomeScreen } from './src/screens/HomeScreen';
 import { EnrollmentScreen } from './src/screens/EnrollmentScreen';
 import { AuthScreen } from './src/screens/AuthScreen';
 import { AttendanceLogScreen } from './src/screens/AttendanceLogScreen';
+import { SettingsScreen } from './src/screens/SettingsScreen';
 import { initDatabase } from './src/storage/database';
 import { startSyncEngine, stopSyncEngine } from './src/sync/syncEngine';
 
 const Stack = createStackNavigator();
 
 export default function App() {
+  const [dbReady, setDbReady] = React.useState(false);
+
   useEffect(() => {
     initDatabase()
-      .then(() => startSyncEngine())
-      .catch(err => console.error('[App] DB init failed:', err));
+      .then(() => { startSyncEngine(); setDbReady(true); })
+      .catch(err => { console.error('[App] DB init failed:', err); setDbReady(true); });
     return () => stopSyncEngine();
   }, []);
+
+  if (!dbReady) return null;
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
@@ -54,6 +59,11 @@ export default function App() {
               name="AttendanceLogs"
               component={AttendanceLogScreen}
               options={{ title: 'Attendance Log', headerBackTitle: '' }}
+            />
+            <Stack.Screen
+              name="Settings"
+              component={SettingsScreen}
+              options={{ title: 'Settings', headerBackTitle: '' }}
             />
           </Stack.Navigator>
         </NavigationContainer>

@@ -13,7 +13,7 @@ import {
   useFrameOutput,
   type Frame,
 } from 'react-native-vision-camera';
-import { useRunOnJS } from 'react-native-worklets-core';
+import { runOnJS } from 'react-native-worklets';
 import { useTensorflowModel } from 'react-native-fast-tflite';
 import { runFaceDetection, ANCHORS } from '../engines/faceDetection';
 import { checkQuality } from '../engines/qualityGate';
@@ -57,9 +57,9 @@ export function EnrollmentScreen({ navigation }: Props) {
   const { hasPermission, requestPermission } = useCameraPermission();
 
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const blazeface = useTensorflowModel(require('../assets/models/blazeface_short.tflite'), ['android-gpu']);
+  const blazeface = useTensorflowModel(require('../assets/models/blazeface_short.tflite'), []);
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const mobilefacenet = useTensorflowModel(require('../assets/models/mobilefacenet.tflite'), ['android-gpu']);
+  const mobilefacenet = useTensorflowModel(require('../assets/models/mobilefacenet.tflite'), []);
 
   useEffect(() => {
     if (!hasPermission) requestPermission();
@@ -83,8 +83,8 @@ export function EnrollmentScreen({ navigation }: Props) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase]);
 
-  // Receives embedding array from the worklet thread
-  const onEmbeddingCaptured = useRunOnJS(
+  // Receives embedding array from the worklet thread (called via runOnJS)
+  const onEmbeddingCaptured = useCallback(
     (arr: number[]) => {
       collectedEmbeddings.current.push(new Float32Array(arr));
       const count = collectedEmbeddings.current.length;
@@ -148,11 +148,11 @@ export function EnrollmentScreen({ navigation }: Props) {
         // Convert typed array to plain array for cross-thread transfer
         const plain: number[] = [];
         for (let i = 0; i < embedding.length; i++) plain.push(embedding[i]);
-        onEmbeddingCaptured(plain);
+        runOnJS(onEmbeddingCaptured)(plain);
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [blazeface.model, mobilefacenet.model],
+    [blazeface.model, mobilefacenet.model, onEmbeddingCaptured],
   );
 
   const frameOutput = useFrameOutput({

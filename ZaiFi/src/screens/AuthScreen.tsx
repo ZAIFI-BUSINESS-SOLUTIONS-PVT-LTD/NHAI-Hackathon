@@ -13,7 +13,7 @@ import {
   useFrameOutput,
   type Frame,
 } from 'react-native-vision-camera';
-import { useRunOnJS } from 'react-native-worklets-core';
+import { runOnJS } from 'react-native-worklets';
 import { useTensorflowModel } from 'react-native-fast-tflite';
 import { runFaceDetection, ANCHORS, type FaceDetectionResult } from '../engines/faceDetection';
 import { checkQuality } from '../engines/qualityGate';
@@ -76,11 +76,11 @@ export function AuthScreen({ navigation }: Props) {
   const { hasPermission, requestPermission } = useCameraPermission();
 
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const blazeface    = useTensorflowModel(require('../assets/models/blazeface_short.tflite'), ['android-gpu']);
+  const blazeface    = useTensorflowModel(require('../assets/models/blazeface_short.tflite'), []);
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const mobilefacenet = useTensorflowModel(require('../assets/models/mobilefacenet.tflite'), ['android-gpu']);
+  const mobilefacenet = useTensorflowModel(require('../assets/models/mobilefacenet.tflite'), []);
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const antispoof    = useTensorflowModel(require('../assets/models/minifasnet_v2.tflite'), ['android-gpu']);
+  const antispoof    = useTensorflowModel(require('../assets/models/minifasnet_v2.tflite'), []);
 
   // ── Data loading ──────────────────────────────────────────────────────────
 
@@ -132,20 +132,20 @@ export function AuthScreen({ navigation }: Props) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase]);
 
-  // ── JS-thread callbacks (called from worklet) ─────────────────────────────
+  // ── JS-thread callbacks (called from worklet via runOnJS) ──────────────────
 
-  const updateBox = useRunOnJS(
+  const updateBox = useCallback(
     (box: FaceDetectionResult | null) => { setDetectedBox(box); },
     [],
   );
 
-  const updateFps = useRunOnJS(
+  const updateFps = useCallback(
     (v: number) => { setFps(v); },
     [],
   );
 
   // Called when worklet obtains a full embedding + liveness score
-  const onAuthResult = useRunOnJS(
+  const onAuthResult = useCallback(
     (embArr: number[], livenessScore: number, tStart: number) => {
       const incoming = new Float32Array(embArr);
       const latencyMs = Date.now() - tStart;
@@ -194,7 +194,7 @@ export function AuthScreen({ navigation }: Props) {
       const nowTs = Date.now();
       if (nowTs - fpsState.lastTs >= 1000) {
         const computed = Math.round(fpsState.count * 1000 / (nowTs - fpsState.lastTs));
-        updateFps(computed);
+        runOnJS(updateFps)(computed);
         fpsState.count = 0;
         fpsState.lastTs = nowTs;
       }
@@ -227,9 +227,9 @@ export function AuthScreen({ navigation }: Props) {
         const det = runFaceDetection(frame, bfModel, ANCHORS);
         if (det) {
           const q = checkQuality(det.box, frame.width, frame.height);
-          updateBox(q.passed ? det : null);
+          runOnJS(updateBox)(q.passed ? det : null);
         } else {
-          updateBox(null);
+          runOnJS(updateBox)(null);
         }
         frame.dispose();
         return;
@@ -237,13 +237,13 @@ export function AuthScreen({ navigation }: Props) {
 
       const detection = runFaceDetection(frame, bfModel, ANCHORS);
       if (!detection) {
-        updateBox(null);
+        runOnJS(updateBox)(null);
         frame.dispose();
         return;
       }
 
       const quality = checkQuality(detection.box, frame.width, frame.height);
-      updateBox(quality.passed ? detection : null);
+      runOnJS(updateBox)(quality.passed ? detection : null);
       if (!quality.passed) {
         frame.dispose();
         return;
@@ -261,7 +261,7 @@ export function AuthScreen({ navigation }: Props) {
       if (!liveness.isLive) {
         // Send result immediately — no embedding needed
         const plain: number[] = [];
-        onAuthResult(plain, liveness.score, tStart);
+        runOnJS(onAuthResult)(plain, liveness.score, tStart);
         frame.dispose();
         return;
       }
@@ -273,11 +273,11 @@ export function AuthScreen({ navigation }: Props) {
       if (embedding) {
         const plain: number[] = [];
         for (let i = 0; i < embedding.length; i++) plain.push(embedding[i]);
-        onAuthResult(plain, liveness.score, tStart);
+        runOnJS(onAuthResult)(plain, liveness.score, tStart);
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [blazeface.model, mobilefacenet.model, antispoof.model, updateFps],
+    [blazeface.model, mobilefacenet.model, antispoof.model, updateBox, updateFps, onAuthResult],
   );
 
   const frameOutput = useFrameOutput({
@@ -382,12 +382,23 @@ export function AuthScreen({ navigation }: Props) {
         </View>
       )}
 
-      {/* Result card */}
+      {/* FPS counter (top-right, dev info for judges) */}
+      {phase === 'scanning' && fps !== null && (
+        <View style={styles.fpsCounter} pointerEvents="none">
+          <Text style={styles.fpsText}>{fps} fps</Text>
+        </View>
+      )}
+
+      {/* Result card — animated slide-up */}
       {phase === 'result' && result && (
-        <View style={styles.resultCard}>
+        <Animated.View
+          style={[styles.resultCard, { transform: [{ translateY: cardSlide }] }]}
+        >
           {result.matched ? (
             <>
-              <Text style={[styles.resultIcon, styles.successColor]}>✓</Text>
+              <Animated.Text
+                style={[styles.resultIcon, styles.successColor, { transform: [{ scale: iconScale }] }]}
+              >✓</Animated.Text>
               <Text style={styles.resultName}>{result.userName ?? 'Unknown'}</Text>
               <Text style={styles.resultConf}>
                 {Math.round(result.confidence * 100)}% confidence
@@ -395,20 +406,24 @@ export function AuthScreen({ navigation }: Props) {
               <View style={styles.latencyBadge}>
                 <Text style={styles.latencyText}>
                   {result.latencyMs < 1000
-                    ? `${result.latencyMs}ms`
-                    : `${(result.latencyMs / 1000).toFixed(1)}s`}
+                    ? `${result.latencyMs} ms · < 1s ✓`
+                    : `${(result.latencyMs / 1000).toFixed(1)} s`}
                 </Text>
               </View>
             </>
           ) : result.failReason === 'liveness' ? (
             <>
-              <Text style={[styles.resultIcon, styles.warnColor]}>⚠</Text>
+              <Animated.Text
+                style={[styles.resultIcon, styles.warnColor, { transform: [{ scale: iconScale }] }]}
+              >⚠</Animated.Text>
               <Text style={styles.resultTitle}>Liveness Check Failed</Text>
               <Text style={styles.resultSub}>Please use a real face</Text>
             </>
           ) : (
             <>
-              <Text style={[styles.resultIcon, styles.failColor]}>✗</Text>
+              <Animated.Text
+                style={[styles.resultIcon, styles.failColor, { transform: [{ scale: iconScale }] }]}
+              >✗</Animated.Text>
               <Text style={styles.resultTitle}>Not Recognized</Text>
               <Text style={styles.resultSub}>Face does not match any enrolled worker</Text>
             </>
@@ -422,7 +437,7 @@ export function AuthScreen({ navigation }: Props) {
               <Text style={styles.linkText}>← Back</Text>
             </TouchableOpacity>
           )}
-        </View>
+        </Animated.View>
       )}
     </View>
   );
@@ -475,6 +490,22 @@ const styles = StyleSheet.create({
   linkText: {
     color: '#888',
     fontSize: 15,
+  },
+  // FPS counter
+  fpsCounter: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  fpsText: {
+    color: '#00C896',
+    fontSize: 11,
+    fontWeight: '600',
+    fontVariant: ['tabular-nums'],
   },
   // Camera overlay
   boundingBox: {

@@ -5,7 +5,7 @@ import NetInfo, { type NetInfoState } from '@react-native-community/netinfo';
 import { getUnsyncedLogs } from '../storage/database';
 
 interface Props {
-  navigation: { navigate: (screen: string) => void };
+  navigation: { navigate: (screen: string, params?: object) => void };
 }
 
 export function HomeScreen({ navigation }: Props) {
@@ -89,7 +89,12 @@ export function HomeScreen({ navigation }: Props) {
         </TouchableOpacity>
       </View>
 
-      <Text style={styles.footer}>Edge AI · No Internet Required</Text>
+      <TouchableOpacity
+        style={styles.footerLink}
+        onPress={() => navigation.navigate('Settings')}
+      >
+        <Text style={styles.footer}>Edge AI · No Internet Required · ⚙ Settings</Text>
+      </TouchableOpacity>
     </View>
   );
 }
@@ -213,10 +218,13 @@ const styles = StyleSheet.create({
     color: '#666',
   },
 
+  footerLink: {
+    marginBottom: 16,
+    alignItems: 'center',
+  },
   footer: {
     color: '#333',
     fontSize: 12,
     textAlign: 'center',
-    marginBottom: 16,
   },
 });

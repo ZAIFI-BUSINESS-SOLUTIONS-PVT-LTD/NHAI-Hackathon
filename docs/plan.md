@@ -1,163 +1,247 @@
-# ZAi-Fi — Execution Plan
-## Hackathon 7.0
+# ZAi-Fi — Gap Closure Plan (Phase 2)
+## Hackathon 7.0 Compliance — Submission Deadline: 05 June 2026
 
 ---
 
-## Strategic Positioning
-
-**"An Edge AI Biometric Authentication Infrastructure Layer for Remote Workforce Operations."**
-
-This is not a face recognition toy app. The story we tell is:
-- Runs entirely on-device, zero internet
-- Sub-second authentication on mid-range phones
-- Production-grade sync architecture (offline-first, sync-later)
-- Built for field workers in dead zones (construction, remote sites, highways)
+> Phase 1 (T01–T14) is complete and archived in [v1/plan.md](v1/plan.md).
+> This plan addresses mandatory compliance gaps and scoring-critical improvements
+> identified against the hackathon specification before the June 5 deadline.
 
 ---
 
-## Performance Goals
+## Gap Summary
 
-| Metric | Target |
-|---|---|
-| Total AI model footprint | < 20 MB |
-| Authentication latency | < 1 second |
-| Face detection latency | < 80 ms per frame |
-| Embedding generation | < 200 ms |
-| Liveness check | < 300 ms |
-| App cold start | < 3 seconds |
-| Model load time (after first launch) | < 2 seconds |
-| Device RAM usage | < 400 MB |
-| Minimum device spec | 3 GB RAM, Android 8+ / iOS 13+ |
-
----
-
-## Implementation Phases
-
-> **Status legend:** `[ ] TODO` · `[~] IN PROGRESS` · `[x] DONE`
-
-### Phase 0 — Scaffold (4 hours) — `[x] DONE`
-**Tasks:** T01, T02, T03
-- Initialize React Native project with TypeScript
-- Install all dependencies in one pass
-- Create folder structure
-- Bundle TFLite model files into app assets
-- Verify camera permission and preview on device
-
-**Gate: Camera preview working on real device**
-
-### Phase 1 — AI Inference Core (8 hours) — `[x] DONE`
-**Tasks:** T04, T05
-- Integrate TFLite runtime
-- Load and run BlazeFace face detection
-- Load and run MobileFaceNet embedding generation
-- Validate output shapes and inference time
-- Wire frame processor → detection → embedding pipeline
-
-**Gate: Embedding generated from live camera frame in < 500 ms**
-
-### Phase 2 — Enrollment + Verification (6 hours) — `[x] DONE`
-**Tasks:** T06, T07, T08, T10
-- Enrollment UI: capture 5 frames, average embeddings, store in SQLite
-- Verification engine: cosine similarity comparison with threshold
-- Auth result: success / fail with confidence score
-- SQLite schema for users + embeddings
-
-**Gate: Full enroll → verify loop working end-to-end**
-
-### Phase 3 — Liveness Detection (6 hours) — `[x] DONE`
-**Tasks:** T09
-- Primary: passive anti-spoofing model (MN3-based, < 4 MB)
-- Secondary: active challenge overlay (blink prompt) for demo visual impact
-- Gate: liveness must pass before embedding is compared
-- Test: photo fails, real face passes
-
-**Gate: Liveness correctly rejects printed photo or screen replay**
-
-### Phase 4 — Offline Storage + Sync (4 hours) — `[x] DONE`
-**Tasks:** T11, T12
-- SQLite tables: attendance_logs, sync_queue
-- Write attendance record on every auth event
-- Network listener: detect online/offline state
-- Sync queue: batch upload on reconnect, mark records synced
-
-**Gate: Attendance logged offline, syncs on reconnect (demo with airplane mode)**
-
-### Phase 5 — UI Polish + Demo Prep (4 hours) — `[ ] TODO`
-**Tasks:** T13, T14
-- Clean auth result screen (checkmark / X animation)
-- Real-time latency display (< 1s badge)
-- Offline/online status pill in header
-- Attendance log screen for judge walkthrough
-- Demo script rehearsed and timed
-
-**Gate: End-to-end demo run completes in under 3 minutes**
-
----
-
-## Milestones
-
-| ID | Milestone | Phase | Status |
+| Gap | Hackathon Requirement | Marks at Risk | Priority |
 |---|---|---|---|
-| M1 | Camera live preview on device | Phase 0 | `[x]` |
-| M2 | Face detection box visible in real time | Phase 1 | `[x]` |
-| M3 | Embedding generated from live frame | Phase 1 | `[x]` |
-| M4 | Enroll + verify loop working | Phase 2 | `[x]` |
-| M5 | Liveness rejection of photo confirmed | Phase 3 | `[x]` |
-| M6 | Offline attendance log + sync working | Phase 4 | `[x]` |
-| M7 | Polished demo flow ready | Phase 5 | `[ ]` |
+| Active liveness (blink / head-turn) | Mandatory deliverable — verbatim: *"blink, smile, or turn their head"* | Disqualification risk | 🔴 Must |
+| Sync & purge after reconnect | Mandatory deliverable — verbatim: *"local data to be purged"* | Certain deduction | 🔴 Must |
+| Datalake 3.0 integration layer | Core objective of the hackathon, Feasibility criterion | 30 marks | 🟡 High |
+| Indian demographics validation | Accuracy >95% claim must be evidenced | 20 marks | 🟡 High |
+| Performance benchmark documentation | Technical documentation deliverable | 20 marks | 🟡 High |
+| iOS 12+ minimum deployment target | Spec says iOS 12+; project targets iOS 13+ | Minor | 🟢 Low |
 
 ---
 
-## Lightweight Optimization Strategy
+## Phase 6 — Active Liveness Challenge (Est. 6 hours)
 
-- TFLite GPU delegate on Android, Metal on iOS — 2-3x speedup with zero code change
-- Load all models once at app start, keep in memory across sessions
-- Throttle detection to every 3rd camera frame (10 fps effective), run embedding only on stable faces
-- Store embeddings as raw float32 arrays in SQLite BLOB — no serialization overhead
-- Keep last N embeddings in a memory cache, avoid DB reads during active auth
+**Tasks:** T15, T16
+**Status:** `[ ] TODO`
+**Target completion:** 02 June 2026
+
+### Problem
+The hackathon specification states under Mandatory Deliverables:
+> *"Offline Liveness Detection: The solution must include basic offline anti-spoofing measures
+> (e.g., requiring the user to blink, smile, or turn their head slightly)"*
+
+The current implementation uses only passive MiniFASNet (texture-based anti-spoofing).
+Passive-only does not satisfy this requirement. Active challenge is required.
+
+### Approach
+
+**Primary: Eye Aspect Ratio (EAR) blink detection**
+
+```
+BlazeFace keypoints → eye center coordinates
+        │
+        ▼
+Crop eye ROI from camera frame (30×15 px per eye)
+        │
+        ▼
+Track mean pixel intensity over rolling 5-frame window
+        │
+        ▼
+Intensity drop > threshold for 2+ consecutive frames = blink detected
+        │
+        ▼
+Blink confirmed → proceed to embedding pipeline
+No blink in 5 seconds → "Liveness Failed — Please Blink"
+```
+
+**Why pixel intensity instead of a new model:**
+BlazeFace already provides eye keypoints (left eye, right eye [x,y]). A pixel-level
+brightness heuristic avoids adding another TFLite model (~2-3 MB saved) and runs in
+pure JS with < 5 ms overhead. MiniFASNet passive check still runs in parallel
+as a second layer.
+
+**Fallback (if pixel approach is unreliable on device):**
+Source MediaPipe FaceMesh lite TFLite (~3 MB) to get 6-point eye landmarks and
+compute classic EAR = (||p2-p6|| + ||p3-p5||) / (2 × ||p1-p4||).
+
+### UI Changes Required
+- `AuthScreen`: Add `blink` phase between `scanning` and `result`
+- Show animated "Please Blink" overlay with countdown timer (5 seconds)
+- On blink detected: flash green "✓ Blink Detected" → proceed to embedding
+- On timeout: show "Liveness Failed" result card (same as current spoof rejection)
+- `EnrollmentScreen`: No change — enrollment skips blink challenge (enrollment is supervised)
+
+**Gate: Real face blinks → auth proceeds. Printed photo held for 5 s → times out with liveness failure.**
 
 ---
 
-## Hackathon Scoring Strategy
+## Phase 7 — Sync & Purge Mechanism (Est. 2 hours)
 
-| Judge Criterion | Our Approach |
-|---|---|
-| Innovation | Edge AI on-device inference, no cloud dependency |
-| Technical depth | 3 TFLite models in a coordinated pipeline |
-| Real-world impact | Field workforce use case, NHAI/construction framing |
-| Demo quality | Live on real device, airplane mode demonstration |
-| Feasibility | Working prototype, not slides — shows production readiness path |
-| Architecture | Offline-first + sync-later is a recognizable enterprise pattern |
+**Tasks:** T17
+**Status:** `[ ] TODO`
+**Target completion:** 02 June 2026
 
-**Narrative hook for judges**: "Signal drops on a highway construction site. The supervisor still needs to verify 50 workers at 7 AM. ZAi-Fi works. Without internet. In under 1 second per worker."
+### Problem
+The hackathon specification states under Mandatory Deliverables:
+> *"The solution should have the scope for sync with AWS server after network
+> connectivity is restored (local data to be purged)"*
+
+The current sync engine sets `synced = 1` but never deletes records.
+"Purge" is explicit — marking is not purging.
+
+### Approach
+
+```
+On successful batch POST response (2xx):
+        │
+        ▼
+DELETE FROM attendance_logs WHERE synced = 1
+        │
+        ▼
+DELETE FROM sync_queue WHERE id IN (processed batch ids)
+        │
+        ▼
+UI: attendance log shows "All records synced and purged" empty state
+```
+
+**Edge cases to handle:**
+- Partial batch success: only purge the records confirmed in the response
+- Keep the last 10 records in a React state cache so the log screen isn't
+  immediately blank mid-demo (judges should see the sync animation, then clear)
+- Show a "Purged X records" toast after each successful sync
+
+**Gate: Demo — airplane mode off → sync animation plays → attendance_logs table count drops to 0.**
 
 ---
 
-## Final Demo Strategy
+## Phase 8 — Datalake 3.0 Integration Layer (Est. 4 hours)
 
-**Demo flow (< 3 minutes):**
+**Tasks:** T18, T19
+**Status:** `[ ] TODO`
+**Target completion:** 03 June 2026
 
-1. Open app on device — show offline mode indicator
-2. Enroll a new worker face (live, takes ~5 seconds)
-3. Authenticate that face — show < 1s badge
-4. Hold up a printed photo — show liveness rejection
-5. Turn on airplane mode → authenticate again → confirm offline works
-6. Turn airplane mode off → show sync trigger → attendance record appears
-7. Show attendance log screen with timestamps
+### Problem
+The hackathon's primary objective is:
+> *"seamlessly integrated into the existing Datalake 3.0 app"*
 
-**Fallback for demo failure:**
-- Pre-enroll a test user before the presentation
-- Have a backup device with same build
-- If liveness fails on demo device, show on backup
+ZAi-Fi is currently a standalone app. The Feasibility criterion (30 marks) scores
+"ease of integration into the existing Datalake 3.0 React Native architecture."
+A standalone demo scores lower here than a clearly packaged module.
+
+### Approach
+
+**Step 1 — Module API surface (T18)**
+
+Create `ZaiFi/src/BiometricAuth/index.ts` that exports a clean, minimal public API:
+
+```typescript
+BiometricAuth.initialize()       // loads models, opens DB
+BiometricAuth.enroll(name)       // opens camera, returns EnrollResult
+BiometricAuth.authenticate()     // opens camera, returns AuthResult
+BiometricAuth.getAttendanceLogs() // returns unsynced records
+BiometricAuth.syncAndPurge()     // manual sync trigger
+```
+
+All internal engines (faceDetection, faceEmbedding, livenessDetection, database)
+remain internal — only the five public functions above are exported.
+
+**Step 2 — Integration documentation (T19)**
+
+Create `docs/INTEGRATION.md` showing:
+- How to install ZAi-Fi as an npm module into Datalake 3.0
+- Minimal integration: `< 30 lines` to add biometric auth to an existing RN screen
+- Architecture diagram showing ZAi-Fi as a service layer within Datalake 3.0
+- Required Android/iOS native config changes
+
+**Gate: Another RN project can call `BiometricAuth.authenticate()` in < 30 lines of integration code.**
 
 ---
 
-## Risk Mitigation
+## Phase 9 — Validation & Compliance (Est. 3 hours)
+
+**Tasks:** T20, T21
+**Status:** `[ ] TODO`
+**Target completion:** 04 June 2026
+
+### T20 — Performance Benchmarking
+
+The hackathon requires:
+> *"facial recognition accuracy must be > 95%... trained to recognize diverse
+> Indian demographics... varying outdoor lighting conditions"*
+
+Run a structured test protocol and document results in `docs/benchmarks.md`:
+
+| Test | Subjects | Lighting | Pass Threshold |
+|---|---|---|---|
+| Same-person verification | 5+ distinct Indian faces | Indoor normal | Similarity > 0.75 |
+| Cross-person rejection | 5 pairs of different people | Indoor normal | Similarity < 0.75 |
+| Outdoor lighting simulation | 3 faces | Bright window / torch | Same thresholds |
+| Low light | 3 faces | Dim indoor | Same thresholds |
+| Anti-spoofing | 3 printed photos + 3 phone screens | Any | Liveness fails |
+| Active blink | 5 people | Indoor | Blink detected within 3s |
+
+Document: model source, training dataset diversity claims, test results table,
+failure cases observed.
+
+### T21 — iOS 12 Compatibility Fix
+
+Update minimum deployment target from iOS 13 to iOS 12 in:
+- `ZaiFi/ios/Podfile` — `platform :ios, '12.0'`
+- `ZaiFi/ios/ZaiFi.xcodeproj` — IPHONEOS_DEPLOYMENT_TARGET
+- All relevant documentation references
+
+**Gate: iOS 12 build succeeds without deprecation errors.**
+
+---
+
+## Phase 2 Milestones
+
+| ID | Milestone | Phase | Deadline | Status |
+|---|---|---|---|---|
+| M8 | Blink detected on real face, gate active | Phase 6 | 02 Jun 2026 | `[ ]` |
+| M9 | Printed photo times out on blink challenge | Phase 6 | 02 Jun 2026 | `[ ]` |
+| M10 | Post-sync purge confirmed (DB count = 0) | Phase 7 | 02 Jun 2026 | `[ ]` |
+| M11 | BiometricAuth module API exported | Phase 8 | 03 Jun 2026 | `[ ]` |
+| M12 | INTEGRATION.md written + diagram done | Phase 8 | 03 Jun 2026 | `[ ]` |
+| M13 | Benchmark results documented | Phase 9 | 04 Jun 2026 | `[ ]` |
+| M14 | iOS 12 build confirmed | Phase 9 | 04 Jun 2026 | `[ ]` |
+| M15 | Full compliance demo run (all features) | All | 05 Jun 2026 | `[ ]` |
+
+---
+
+## Scoring Projection
+
+| Criterion | Max Marks | Before Phase 2 | After Phase 2 |
+|---|---|---|---|
+| Innovation Level (edge AI, compression) | 30 | ~22 | ~26 |
+| Feasibility (Datalake 3.0 integration, speed) | 30 | ~18 | ~26 |
+| Scalability & Sustainability (sync/purge, demographics) | 20 | ~12 | ~17 |
+| Presentation & Documentation | 20 | ~0 | Handled separately |
+| **Total (excl. presentation)** | **80** | **~52** | **~69** |
+
+---
+
+## Updated Demo Script (< 3 minutes — compliance version)
+
+1. Open app — show offline indicator + model load confirmation
+2. Enroll a worker face (live, ~5 seconds)
+3. Authenticate: "Please Blink" overlay appears → user blinks → `< 1s ✓` badge
+4. Hold up a printed photo → blink timeout → "Liveness Failed — Please use a real face"
+5. Turn airplane mode on → authenticate (blink + match) → attendance logged
+6. Turn airplane mode off → sync animation plays → records purge → empty state
+7. Show INTEGRATION.md: "Datalake 3.0 adds this in 30 lines"
+
+---
+
+## Risk Mitigation (Phase 2)
 
 | Risk | Mitigation |
 |---|---|
-| TFLite integration broken on iOS | Focus demo on Android, note iOS as "tested" |
-| Model inference too slow | Pre-warm models, show pre-recorded video as fallback |
-| SQLite not persisting correctly | Use AsyncStorage as temporary fallback |
-| Camera frame processor crashes | Throttle frame rate, add error boundary |
-| Demo device battery dies | Keep device charging during presentation |
+| Pixel-based blink detection unreliable on some devices | Have MediaPipe FaceMesh model as drop-in fallback (T15 fallback) |
+| Purge empties log screen abruptly mid-demo | Cache last 10 records in memory; show "Synced" state before clearing |
+| Integration layer refactor breaks existing screens | Keep all existing screens intact; module API is a new export layer, not a rewrite |
+| iOS 12 breaks a dependency | Revert to iOS 13 if build fails; document as "iOS 13+ tested, iOS 12 compatible in principle" |
+| Benchmarking reveals accuracy < 95% | Document failure conditions (extreme lighting, accessories); propose fine-tuning path |
