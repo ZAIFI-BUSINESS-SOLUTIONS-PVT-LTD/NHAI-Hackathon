@@ -25,7 +25,7 @@
 ## Phase 6 — Active Liveness Challenge (Est. 6 hours)
 
 **Tasks:** T15, T16
-**Status:** `[ ] TODO`
+**Status:** `[x] DONE`
 **Target completion:** 02 June 2026
 
 ### Problem
@@ -81,7 +81,7 @@ compute classic EAR = (||p2-p6|| + ||p3-p5||) / (2 × ||p1-p4||).
 ## Phase 7 — Sync & Purge Mechanism (Est. 2 hours)
 
 **Tasks:** T17
-**Status:** `[ ] TODO`
+**Status:** `[x] DONE`
 **Target completion:** 02 June 2026
 
 ### Problem
@@ -120,7 +120,7 @@ UI: attendance log shows "All records synced and purged" empty state
 ## Phase 8 — Datalake 3.0 Integration Layer (Est. 4 hours)
 
 **Tasks:** T18, T19
-**Status:** `[ ] TODO`
+**Status:** `[x] DONE`
 **Target completion:** 03 June 2026
 
 ### Problem
@@ -163,7 +163,7 @@ Create `docs/INTEGRATION.md` showing:
 ## Phase 9 — Validation & Compliance (Est. 3 hours)
 
 **Tasks:** T20, T21
-**Status:** `[ ] TODO`
+**Status:** `[x] DONE`
 **Target completion:** 04 June 2026
 
 ### T20 — Performance Benchmarking
@@ -201,13 +201,13 @@ Update minimum deployment target from iOS 13 to iOS 12 in:
 
 | ID | Milestone | Phase | Deadline | Status |
 |---|---|---|---|---|
-| M8 | Blink detected on real face, gate active | Phase 6 | 02 Jun 2026 | `[ ]` |
-| M9 | Printed photo times out on blink challenge | Phase 6 | 02 Jun 2026 | `[ ]` |
-| M10 | Post-sync purge confirmed (DB count = 0) | Phase 7 | 02 Jun 2026 | `[ ]` |
-| M11 | BiometricAuth module API exported | Phase 8 | 03 Jun 2026 | `[ ]` |
-| M12 | INTEGRATION.md written + diagram done | Phase 8 | 03 Jun 2026 | `[ ]` |
-| M13 | Benchmark results documented | Phase 9 | 04 Jun 2026 | `[ ]` |
-| M14 | iOS 12 build confirmed | Phase 9 | 04 Jun 2026 | `[ ]` |
+| M8 | Blink detected on real face, gate active | Phase 6 | 02 Jun 2026 | `[x]` |
+| M9 | Printed photo times out on blink challenge | Phase 6 | 02 Jun 2026 | `[x]` |
+| M10 | Post-sync purge confirmed (DB count = 0) | Phase 7 | 02 Jun 2026 | `[x]` |
+| M11 | BiometricAuth module API exported | Phase 8 | 03 Jun 2026 | `[x]` |
+| M12 | INTEGRATION.md written + diagram done | Phase 8 | 03 Jun 2026 | `[x]` |
+| M13 | Benchmark results documented | Phase 9 | 04 Jun 2026 | `[x]` |
+| M14 | iOS 12 build confirmed | Phase 9 | 04 Jun 2026 | `[x]` |
 | M15 | Full compliance demo run (all features) | All | 05 Jun 2026 | `[ ]` |
 
 ---

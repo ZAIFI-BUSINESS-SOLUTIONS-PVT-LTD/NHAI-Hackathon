@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -44,7 +44,10 @@ export function AttendanceLogScreen({ navigation }: Props) {
     isSyncing: false,
     pendingCount: 0,
     lastSyncedCount: 0,
+    purgedCount: 0,
   });
+  const [purgedCount, setPurgedCount] = useState<number>(0);
+  const [showPurgeToast, setShowPurgeToast] = useState(false);
 
   const load = useCallback(async () => {
     const [fetchedLogs, users] = await Promise.all([
@@ -62,8 +65,12 @@ export function AttendanceLogScreen({ navigation }: Props) {
       load().finally(() => setLoading(false));
       const unsub = addSyncListener(status => {
         setSyncStatus(status);
-        // Reload list after sync completes so badges update
         if (!status.isSyncing && status.lastSyncedCount > 0) {
+          if (status.purgedCount > 0) {
+            setPurgedCount(status.purgedCount);
+            setShowPurgeToast(true);
+            setTimeout(() => setShowPurgeToast(false), 3000);
+          }
           load().catch(console.error);
         }
       });
@@ -130,10 +137,14 @@ export function AttendanceLogScreen({ navigation }: Props) {
       {/* Empty state */}
       {logs.length === 0 ? (
         <View style={styles.centered}>
-          <Text style={styles.emptyIcon}>📋</Text>
-          <Text style={styles.emptyTitle}>No Records Yet</Text>
+          <Text style={styles.emptyIcon}>{purgedCount > 0 ? '✅' : '📋'}</Text>
+          <Text style={styles.emptyTitle}>
+            {purgedCount > 0 ? 'All Records Synced' : 'No Records Yet'}
+          </Text>
           <Text style={styles.emptySubText}>
-            Attendance records appear here after each authentication attempt.
+            {purgedCount > 0
+              ? `${purgedCount} attendance record${purgedCount !== 1 ? 's' : ''} synced and cleared from device.`
+              : 'Attendance records appear here after each authentication attempt.'}
           </Text>
         </View>
       ) : (
@@ -191,6 +202,15 @@ export function AttendanceLogScreen({ navigation }: Props) {
             );
           }}
         />
+      )}
+
+      {/* Purge toast */}
+      {showPurgeToast && (
+        <View style={styles.purgeToast}>
+          <Text style={styles.purgeToastText}>
+            ✓ {purgedCount} record{purgedCount !== 1 ? 's' : ''} synced & purged
+          </Text>
+        </View>
       )}
     </View>
   );
@@ -342,5 +362,23 @@ const styles = StyleSheet.create({
   },
   pendingBadgeText: {
     color: '#FFB020',
+  },
+
+  // Purge toast
+  purgeToast: {
+    position: 'absolute',
+    bottom: 24,
+    left: 24,
+    right: 24,
+    backgroundColor: '#00C896',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+  },
+  purgeToastText: {
+    color: '#000',
+    fontSize: 14,
+    fontWeight: '700',
   },
 });

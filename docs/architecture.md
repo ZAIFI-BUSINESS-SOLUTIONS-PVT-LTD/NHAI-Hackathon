@@ -316,3 +316,21 @@ async function initModels() {
   minifasnet = await loadTFLiteModel(require('./assets/models/minifasnet.tflite'));
 }
 ```
+
+---
+
+## Hardware & Platform Requirements
+
+| Requirement | Minimum | Recommended |
+|---|---|---|
+| **Android** | API 24 (Android 7.0) | API 30+ (Android 11) |
+| **iOS** | iOS 12.0 | iOS 15+ |
+| **RAM** | 3 GB | 4 GB+ |
+| **Processor** | Octa-core 1.8 GHz (Cortex-A53 class) | Snapdragon 6xx / Apple A12+ |
+| **Camera** | 8 MP front-facing | 12 MP front-facing |
+| **Storage** | 50 MB free (app + models) | 100 MB+ |
+| **React Native** | 0.73+ | 0.85+ (tested) |
+
+**iOS note:** Deployment target set to iOS 12.0 (`platform :ios, '12.0'` in Podfile,
+`IPHONEOS_DEPLOYMENT_TARGET = 12.0` in Xcode project). Metal delegate available from
+iOS 11; Camera frame processor requires iOS 12+.

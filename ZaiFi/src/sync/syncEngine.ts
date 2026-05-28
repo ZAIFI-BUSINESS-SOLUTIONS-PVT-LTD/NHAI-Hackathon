@@ -1,9 +1,15 @@
 import NetInfo from '@react-native-community/netinfo';
-import { getUnsyncedLogs, markLogSynced } from '../storage/database';
+import { getUnsyncedLogs, markLogSynced, purgeSyncedAttendanceLogs, clearProcessedSyncQueue } from '../storage/database';
 
 // Stub endpoint — replace with real backend URL before production.
 // Using httpbin so the demo sync actually succeeds when online.
-export const SYNC_ENDPOINT = 'https://httpbin.org/post';
+// Use setSyncEndpoint() (or BiometricAuth.syncAndPurge(url)) to override at runtime.
+let _syncEndpoint = 'https://httpbin.org/post';
+export const SYNC_ENDPOINT = _syncEndpoint; // kept for backward compat
+
+export function setSyncEndpoint(url: string): void {
+  _syncEndpoint = url;
+}
 
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 800;
@@ -12,6 +18,7 @@ export interface SyncStatus {
   isSyncing: boolean;
   pendingCount: number;
   lastSyncedCount: number;
+  purgedCount: number;
 }
 
 type SyncListener = (status: SyncStatus) => void;
@@ -34,12 +41,12 @@ function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-export async function runSync(): Promise<{ synced: number; failed: number }> {
-  if (_isSyncing) return { synced: 0, failed: 0 };
+export async function runSync(): Promise<{ synced: number; failed: number; purgedCount: number }> {
+  if (_isSyncing) return { synced: 0, failed: 0, purgedCount: 0 };
   _isSyncing = true;
 
   const logs = await getUnsyncedLogs();
-  emit({ isSyncing: true, pendingCount: logs.length, lastSyncedCount: 0 });
+  emit({ isSyncing: true, pendingCount: logs.length, lastSyncedCount: 0, purgedCount: 0 });
 
   let synced = 0;
   let failed = 0;
@@ -48,7 +55,7 @@ export async function runSync(): Promise<{ synced: number; failed: number }> {
     let success = false;
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
       try {
-        const res = await fetch(SYNC_ENDPOINT, {
+        const res = await fetch(_syncEndpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -75,9 +82,19 @@ export async function runSync(): Promise<{ synced: number; failed: number }> {
     }
   }
 
+  let purgedCount = 0;
+  if (synced > 0) {
+    try {
+      purgedCount = await purgeSyncedAttendanceLogs();
+      await clearProcessedSyncQueue([]);
+    } catch (purgeErr) {
+      console.error('[SyncEngine] purge error:', purgeErr);
+    }
+  }
+
   _isSyncing = false;
-  emit({ isSyncing: false, pendingCount: failed, lastSyncedCount: synced });
-  return { synced, failed };
+  emit({ isSyncing: false, pendingCount: failed, lastSyncedCount: synced, purgedCount });
+  return { synced, failed, purgedCount };
 }
 
 export function startSyncEngine(): void {

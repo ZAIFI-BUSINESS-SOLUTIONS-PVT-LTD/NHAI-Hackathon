@@ -13,12 +13,13 @@ import {
   useFrameOutput,
   type Frame,
 } from 'react-native-vision-camera';
-import { runOnJS } from 'react-native-worklets';
+import { runOnJS, createSynchronizable } from 'react-native-worklets';
 import { useTensorflowModel } from 'react-native-fast-tflite';
 import { runFaceDetection, ANCHORS, type FaceDetectionResult } from '../engines/faceDetection';
 import { checkQuality } from '../engines/qualityGate';
 import { runFaceEmbedding } from '../engines/faceEmbedding';
 import { runLivenessDetection } from '../engines/livenessDetection';
+import { processBlink, initBlinkDetector, resetBlinkDetector } from '../engines/blinkDetection';
 import { verifyFace } from '../engines/verification';
 import type { StoredEmbedding } from '../types/auth';
 import {
@@ -27,13 +28,14 @@ import {
   logAttendance,
 } from '../storage/database';
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// -- Types ---------------------------------------------------------------------
 
 type Phase =
-  | 'loading'     // loading embeddings from DB
-  | 'no-users'    // no enrolled workers yet
-  | 'scanning'    // camera active, waiting for face
-  | 'result';     // auth result ready
+  | 'loading'   // loading embeddings from DB
+  | 'no-users'  // no enrolled workers yet
+  | 'scanning'  // camera active, waiting for face + quality gate
+  | 'blink'     // active liveness: user must blink within 5 s
+  | 'result';   // auth result ready
 
 interface AuthResultState {
   matched: boolean;
@@ -47,42 +49,66 @@ interface Props {
   navigation?: { goBack: () => void; navigate: (screen: string) => void };
 }
 
-// ── Component ─────────────────────────────────────────────────────────────────
+// Blink-challenge timeout in milliseconds
+const BLINK_TIMEOUT_MS = 5000;
+
+// -- Component -----------------------------------------------------------------
 
 export function AuthScreen({ navigation }: Props) {
   const [phase, setPhase] = useState<Phase>('loading');
   const [detectedBox, setDetectedBox] = useState<FaceDetectionResult | null>(null);
   const [result, setResult] = useState<AuthResultState | null>(null);
+  // Countdown seconds displayed inside the ring (5 -> 0)
+  const [blinkSecondsLeft, setBlinkSecondsLeft] = useState(5);
+  const blinkIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Pre-loaded data — available to JS callbacks
+  // Pre-loaded data -- available to JS callbacks
   const storedEmbeddings = useRef<StoredEmbedding[]>([]);
   const userNames = useRef<Map<string, string>>(new Map());
 
-  // Shared mutable state for worklet control (same pattern as CameraScreen throttle)
-  const captureState = React.useMemo(
-    () => ({ active: false, lastRun: 0 }),
+  // pipelineMode: JSI-backed synchronizable — JS-thread mutations (tryAgain, load)
+  // are visible inside the worklet runtime. getDirty() = fast non-blocking read;
+  // setBlocking() = atomic cross-thread write from JS or worklet.
+  //
+  //   'scanning' -> quality gate in progress; first passing frame triggers 'blink'
+  //   'blink'    -> active blink challenge running; also checking passive liveness
+  //   'done'     -> result obtained; worklet should skip all processing
+  const pipelineMode = React.useMemo(
+    () => createSynchronizable<'scanning' | 'blink' | 'done'>('scanning'),
     [],
   );
+  // blinkTimer is worklet-local (only read/written inside worklet; plain object is fine)
+  const blinkTimer = React.useMemo(() => ({ ts: 0 }), []);
+
+  // Blink detector state (shared mutable object, same lifetime as component)
+  const blinkState = React.useMemo(() => initBlinkDetector(), []);
+
+  // Throttle: every 3rd frame is processed (~10 fps effective)
   const throttle = React.useMemo(() => ({ count: 0 }), []);
 
-  // FPS tracking — mutable object readable from worklet closure
+  // FPS tracking
   const fpsState = React.useMemo(() => ({ count: 0, lastTs: Date.now() }), []);
   const [fps, setFps] = useState<number | null>(null);
 
+  // Blink-phase 5-second countdown (smooth bar animation)
+  const blinkCountdown = useRef(new Animated.Value(BLINK_TIMEOUT_MS)).current;
+  const blinkTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const blinkAnimRef    = useRef<Animated.CompositeAnimation | null>(null);
+
   // Result card animation
-  const cardSlide  = useRef(new Animated.Value(120)).current;
-  const iconScale  = useRef(new Animated.Value(0)).current;
+  const cardSlide = useRef(new Animated.Value(120)).current;
+  const iconScale = useRef(new Animated.Value(0)).current;
 
   const { hasPermission, requestPermission } = useCameraPermission();
 
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const blazeface    = useTensorflowModel(require('../assets/models/blazeface_short.tflite'), []);
+  const blazeface     = useTensorflowModel(require('../assets/models/blazeface_short.tflite'), []);
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const mobilefacenet = useTensorflowModel(require('../assets/models/mobilefacenet.tflite'), []);
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const antispoof    = useTensorflowModel(require('../assets/models/minifasnet_v2.tflite'), []);
+  const antispoof     = useTensorflowModel(require('../assets/models/minifasnet_v2.tflite'), []);
 
-  // ── Data loading ──────────────────────────────────────────────────────────
+  // -- Data loading ------------------------------------------------------------
 
   useEffect(() => {
     if (!hasPermission) requestPermission();
@@ -101,14 +127,14 @@ export function AuthScreen({ navigation }: Props) {
       if (embeddings.length === 0) {
         setPhase('no-users');
       } else {
-        captureState.active = true;
+        pipelineMode.setBlocking('scanning');
         setPhase('scanning');
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Result card animation ─────────────────────────────────────────────────
+  // -- Result card animation ---------------------------------------------------
 
   useEffect(() => {
     if (phase !== 'result') return;
@@ -129,10 +155,10 @@ export function AuthScreen({ navigation }: Props) {
         useNativeDriver: true,
       }),
     ]).start();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase]);
 
-  // ── JS-thread callbacks (called from worklet via runOnJS) ──────────────────
+  // -- JS-thread callbacks (called from worklet via runOnJS) -------------------
 
   const updateBox = useCallback(
     (box: FaceDetectionResult | null) => { setDetectedBox(box); },
@@ -144,10 +170,26 @@ export function AuthScreen({ navigation }: Props) {
     [],
   );
 
-  // Called when worklet obtains a full embedding + liveness score
+  /**
+   * Called when embedding + liveness score are ready (blink confirmed),
+   * or with empty embedding + score <= 0.7 for immediate liveness failures.
+   */
   const onAuthResult = useCallback(
     (embArr: number[], livenessScore: number, tStart: number) => {
-      const incoming = new Float32Array(embArr);
+      // Cancel any pending blink timeout + animations
+      if (blinkTimeoutRef.current !== null) {
+        clearTimeout(blinkTimeoutRef.current);
+        blinkTimeoutRef.current = null;
+      }
+      if (blinkIntervalRef.current !== null) {
+        clearInterval(blinkIntervalRef.current);
+        blinkIntervalRef.current = null;
+      }
+      if (blinkAnimRef.current) {
+        blinkAnimRef.current.stop();
+        blinkAnimRef.current = null;
+      }
+
       const latencyMs = Date.now() - tStart;
 
       if (livenessScore < 0.7) {
@@ -162,8 +204,9 @@ export function AuthScreen({ navigation }: Props) {
         return;
       }
 
+      const incoming   = new Float32Array(embArr);
       const authResult = verifyFace(incoming, storedEmbeddings.current);
-      const userName = authResult.userId
+      const userName   = authResult.userId
         ? userNames.current.get(authResult.userId)
         : undefined;
 
@@ -183,13 +226,68 @@ export function AuthScreen({ navigation }: Props) {
     [],
   );
 
-  // ── Frame processor (worklet) ─────────────────────────────────────────────
+  /**
+   * Transition from 'scanning' -> 'blink': show overlay, start countdown + timeout.
+   * Called via runOnJS from the worklet on the first quality-passing frame.
+   */
+  const enterBlinkPhase = useCallback(() => {
+    resetBlinkDetector(blinkState);
+    setDetectedBox(null);
+    setBlinkSecondsLeft(5);
+    setPhase('blink');
+
+    // Smooth bar animation: Animated.Value from BLINK_TIMEOUT_MS -> 0
+    blinkCountdown.setValue(BLINK_TIMEOUT_MS);
+    const anim = Animated.timing(blinkCountdown, {
+      toValue: 0,
+      duration: BLINK_TIMEOUT_MS,
+      useNativeDriver: false,
+    });
+    blinkAnimRef.current = anim;
+    anim.start();
+
+    // Per-second tick for the countdown number in the ring
+    let secsLeft = 5;
+    blinkIntervalRef.current = setInterval(() => {
+      secsLeft -= 1;
+      setBlinkSecondsLeft(Math.max(0, secsLeft));
+      if (secsLeft <= 0 && blinkIntervalRef.current !== null) {
+        clearInterval(blinkIntervalRef.current);
+        blinkIntervalRef.current = null;
+      }
+    }, 1000);
+
+    // Hard timeout: liveness failure if no blink within 5 s
+    blinkTimeoutRef.current = setTimeout(() => {
+      blinkTimeoutRef.current = null;
+      if (blinkAnimRef.current) {
+        blinkAnimRef.current.stop();
+        blinkAnimRef.current = null;
+      }
+      if (blinkIntervalRef.current !== null) {
+        clearInterval(blinkIntervalRef.current);
+        blinkIntervalRef.current = null;
+      }
+      pipelineMode.setBlocking('done');
+      logAttendance(null, false, 0).catch(console.error);
+      setResult({
+        matched: false,
+        confidence: 0,
+        latencyMs: BLINK_TIMEOUT_MS,
+        failReason: 'liveness',
+      });
+      setPhase('result');
+    }, BLINK_TIMEOUT_MS);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // -- Frame processor (worklet) -----------------------------------------------
 
   const onFrame = useCallback(
     (frame: Frame) => {
       'worklet';
 
-      // FPS counter — runs on every raw frame before any throttle
+      // FPS counter -- runs on every raw frame before any throttle
       fpsState.count++;
       const nowTs = Date.now();
       if (nowTs - fpsState.lastTs >= 1000) {
@@ -199,7 +297,8 @@ export function AuthScreen({ navigation }: Props) {
         fpsState.lastTs = nowTs;
       }
 
-      if (!captureState.active) {
+      // Gate: pipeline finished -- drop all frames
+      if (pipelineMode.getDirty() === 'done') {
         frame.dispose();
         return;
       }
@@ -220,21 +319,7 @@ export function AuthScreen({ navigation }: Props) {
         return;
       }
 
-      // Minimum 1.5 s between full pipeline runs to avoid hammering the result
-      const now = Date.now();
-      if (now - captureState.lastRun < 1500) {
-        // Still detect face + update overlay, skip embedding
-        const det = runFaceDetection(frame, bfModel, ANCHORS);
-        if (det) {
-          const q = checkQuality(det.box, frame.width, frame.height);
-          runOnJS(updateBox)(q.passed ? det : null);
-        } else {
-          runOnJS(updateBox)(null);
-        }
-        frame.dispose();
-        return;
-      }
-
+      // Face detection + quality gate (needed in both scanning and blink phases)
       const detection = runFaceDetection(frame, bfModel, ANCHORS);
       if (!detection) {
         runOnJS(updateBox)(null);
@@ -249,24 +334,41 @@ export function AuthScreen({ navigation }: Props) {
         return;
       }
 
-      // Lock pipeline — only one run at a time
-      captureState.lastRun = now;
-      captureState.active  = false;
-
-      const tStart = Date.now();
-
-      // Liveness check
-      const liveness = runLivenessDetection(frame, detection.box, asModel);
-
-      if (!liveness.isLive) {
-        // Send result immediately — no embedding needed
-        const plain: number[] = [];
-        runOnJS(onAuthResult)(plain, liveness.score, tStart);
+      // SCANNING: first quality-passing frame -> enter blink challenge
+      if (pipelineMode.getDirty() === 'scanning') {
+        pipelineMode.setBlocking('blink');
+        runOnJS(enterBlinkPhase)();
         frame.dispose();
         return;
       }
 
-      // Embedding
+      // BLINK phase: throttle liveness + blink checks to ~5 fps (200 ms gap)
+      const now = Date.now();
+      if (now - blinkTimer.ts < 200) {
+        frame.dispose();
+        return;
+      }
+      blinkTimer.ts = now;
+
+      // Passive MiniFASNet check -- fail immediately if spoofed
+      const liveness = runLivenessDetection(frame, detection.box, asModel);
+      if (liveness.score <= 0.7) {
+        pipelineMode.setBlocking('done');
+        runOnJS(onAuthResult)([], liveness.score, now);
+        frame.dispose();
+        return;
+      }
+
+      // Active blink check
+      const blinkResult = processBlink(frame, detection, blinkState);
+      if (!blinkResult.blinkDetected) {
+        frame.dispose();
+        return;
+      }
+
+      // Blink confirmed -> run embedding
+      pipelineState.mode = 'done';
+      const tStart  = Date.now();
       const embedding = runFaceEmbedding(frame, detection.box, mfnModel);
       frame.dispose();
 
@@ -277,7 +379,8 @@ export function AuthScreen({ navigation }: Props) {
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [blazeface.model, mobilefacenet.model, antispoof.model, updateBox, updateFps, onAuthResult],
+    [blazeface.model, mobilefacenet.model, antispoof.model,
+     updateBox, updateFps, enterBlinkPhase, onAuthResult],
   );
 
   const frameOutput = useFrameOutput({
@@ -286,23 +389,42 @@ export function AuthScreen({ navigation }: Props) {
     onFrame,
   });
 
-  // ── Restart auth ──────────────────────────────────────────────────────────
+  // -- Restart auth ------------------------------------------------------------
 
   function tryAgain() {
+    // Cancel all blink timers + animation
+    if (blinkTimeoutRef.current !== null) {
+      clearTimeout(blinkTimeoutRef.current);
+      blinkTimeoutRef.current = null;
+    }
+    if (blinkIntervalRef.current !== null) {
+      clearInterval(blinkIntervalRef.current);
+      blinkIntervalRef.current = null;
+    }
+    if (blinkAnimRef.current) {
+      blinkAnimRef.current.stop();
+      blinkAnimRef.current = null;
+    }
+
+    // Reset blink state + pipeline
+    resetBlinkDetector(blinkState);
+    pipelineState.mode         = 'scanning';
+    pipelineState.lastBlinkRun = 0;
+    throttle.count             = 0;
+
+    setBlinkSecondsLeft(5);
     setDetectedBox(null);
     setResult(null);
-    captureState.active  = true;
-    captureState.lastRun = 0;
     setPhase('scanning');
   }
 
-  // ── Render ─────────────────────────────────────────────────────────────────
+  // -- Render ------------------------------------------------------------------
 
   if (phase === 'loading') {
     return (
       <View style={styles.centered}>
         <ActivityIndicator size="large" color="#00C896" />
-        <Text style={styles.statusText}>Loading enrolled workers…</Text>
+        <Text style={styles.statusText}>Loading enrolled workers...</Text>
       </View>
     );
   }
@@ -310,7 +432,7 @@ export function AuthScreen({ navigation }: Props) {
   if (phase === 'no-users') {
     return (
       <View style={styles.centered}>
-        <Text style={styles.bigIcon}>👤</Text>
+        <Text style={styles.bigIcon}>{'👤'}</Text>
         <Text style={styles.title}>No Workers Enrolled</Text>
         <Text style={styles.statusText}>
           Enroll a worker before attempting authentication.
@@ -343,19 +465,25 @@ export function AuthScreen({ navigation }: Props) {
     mobilefacenet.state === 'loaded' &&
     antispoof.state === 'loaded';
 
+  // Interpolate countdown ms -> progress fraction [1->0] for ring sweep
+  const ringProgress = blinkCountdown.interpolate({
+    inputRange:  [0, BLINK_TIMEOUT_MS],
+    outputRange: [0, 1],
+  });
+
   return (
     <View style={StyleSheet.absoluteFill}>
-      {/* Camera — always mounted so models stay warm */}
+      {/* Camera -- keep active during both scanning and blink phases */}
       <Camera
         style={StyleSheet.absoluteFill}
         device="front"
-        isActive={phase === 'scanning'}
+        isActive={phase === 'scanning' || phase === 'blink'}
         outputs={[frameOutput]}
         mirrorMode="auto"
       />
 
-      {/* Face bounding box */}
-      {phase === 'scanning' && detectedBox && (
+      {/* Face bounding box overlay */}
+      {(phase === 'scanning' || phase === 'blink') && detectedBox && (
         <View
           pointerEvents="none"
           style={[
@@ -374,7 +502,7 @@ export function AuthScreen({ navigation }: Props) {
       {phase === 'scanning' && (
         <View style={styles.scanOverlay} pointerEvents="none">
           <Text style={styles.scanText}>
-            {modelsReady ? 'Look at the camera' : 'Loading models…'}
+            {modelsReady ? 'Look at the camera' : 'Loading models...'}
           </Text>
           {!modelsReady && (
             <ActivityIndicator color="#00C896" style={{ marginTop: 8 }} />
@@ -382,14 +510,34 @@ export function AuthScreen({ navigation }: Props) {
         </View>
       )}
 
-      {/* FPS counter (top-right, dev info for judges) */}
-      {phase === 'scanning' && fps !== null && (
+      {/* Blink challenge overlay */}
+      {phase === 'blink' && (
+        <View style={styles.blinkOverlay} pointerEvents="none">
+          <View style={styles.ringWrap}>
+            <View style={styles.ringTrack} />
+            <Animated.View
+              style={[
+                styles.ringFill,
+                { transform: [{ scaleX: ringProgress }] },
+              ]}
+            />
+            <View style={styles.ringCentre}>
+              <Text style={styles.countdownNumber}>{blinkSecondsLeft}</Text>
+            </View>
+          </View>
+          <Text style={styles.blinkTitle}>Please Blink</Text>
+          <Text style={styles.blinkSub}>Natural blink detected automatically</Text>
+        </View>
+      )}
+
+      {/* FPS counter (top-right, dev info) */}
+      {(phase === 'scanning' || phase === 'blink') && fps !== null && (
         <View style={styles.fpsCounter} pointerEvents="none">
           <Text style={styles.fpsText}>{fps} fps</Text>
         </View>
       )}
 
-      {/* Result card — animated slide-up */}
+      {/* Result card -- animated slide-up */}
       {phase === 'result' && result && (
         <Animated.View
           style={[styles.resultCard, { transform: [{ translateY: cardSlide }] }]}
@@ -398,7 +546,7 @@ export function AuthScreen({ navigation }: Props) {
             <>
               <Animated.Text
                 style={[styles.resultIcon, styles.successColor, { transform: [{ scale: iconScale }] }]}
-              >✓</Animated.Text>
+              >{'✓'}</Animated.Text>
               <Text style={styles.resultName}>{result.userName ?? 'Unknown'}</Text>
               <Text style={styles.resultConf}>
                 {Math.round(result.confidence * 100)}% confidence
@@ -406,7 +554,7 @@ export function AuthScreen({ navigation }: Props) {
               <View style={styles.latencyBadge}>
                 <Text style={styles.latencyText}>
                   {result.latencyMs < 1000
-                    ? `${result.latencyMs} ms · < 1s ✓`
+                    ? `${result.latencyMs} ms`
                     : `${(result.latencyMs / 1000).toFixed(1)} s`}
                 </Text>
               </View>
@@ -415,7 +563,7 @@ export function AuthScreen({ navigation }: Props) {
             <>
               <Animated.Text
                 style={[styles.resultIcon, styles.warnColor, { transform: [{ scale: iconScale }] }]}
-              >⚠</Animated.Text>
+              >{'⚠'}</Animated.Text>
               <Text style={styles.resultTitle}>Liveness Check Failed</Text>
               <Text style={styles.resultSub}>Please use a real face</Text>
             </>
@@ -423,7 +571,7 @@ export function AuthScreen({ navigation }: Props) {
             <>
               <Animated.Text
                 style={[styles.resultIcon, styles.failColor, { transform: [{ scale: iconScale }] }]}
-              >✗</Animated.Text>
+              >{'✗'}</Animated.Text>
               <Text style={styles.resultTitle}>Not Recognized</Text>
               <Text style={styles.resultSub}>Face does not match any enrolled worker</Text>
             </>
@@ -434,7 +582,7 @@ export function AuthScreen({ navigation }: Props) {
           </TouchableOpacity>
           {navigation && (
             <TouchableOpacity style={styles.linkBtn} onPress={navigation.goBack}>
-              <Text style={styles.linkText}>← Back</Text>
+              <Text style={styles.linkText}>Back</Text>
             </TouchableOpacity>
           )}
         </Animated.View>
@@ -443,7 +591,9 @@ export function AuthScreen({ navigation }: Props) {
   );
 }
 
-// ── Styles ────────────────────────────────────────────────────────────────────
+// -- Styles --------------------------------------------------------------------
+
+const RING_SIZE = 112;
 
 const styles = StyleSheet.create({
   centered: {
@@ -491,7 +641,6 @@ const styles = StyleSheet.create({
     color: '#888',
     fontSize: 15,
   },
-  // FPS counter
   fpsCounter: {
     position: 'absolute',
     top: 12,
@@ -507,7 +656,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontVariant: ['tabular-nums'],
   },
-  // Camera overlay
   boundingBox: {
     position: 'absolute',
     borderWidth: 2,
@@ -529,30 +677,89 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '500',
   },
-  // Result card
+  blinkOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(0,0,0,0.82)',
+    paddingTop: 28,
+    paddingBottom: 52,
+    alignItems: 'center',
+  },
+  ringWrap: {
+    width:  RING_SIZE,
+    height: RING_SIZE,
+    marginBottom: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ringTrack: {
+    position: 'absolute',
+    width:  RING_SIZE,
+    height: RING_SIZE,
+    borderRadius: RING_SIZE / 2,
+    borderWidth: 6,
+    borderColor: '#2A2A2A',
+  },
+  ringFill: {
+    position: 'absolute',
+    width:  RING_SIZE,
+    height: RING_SIZE,
+    borderRadius: RING_SIZE / 2,
+    borderWidth: 6,
+    borderColor: '#00C896',
+  },
+  ringCentre: {
+    position: 'absolute',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width:  RING_SIZE,
+    height: RING_SIZE,
+  },
+  countdownNumber: {
+    color: '#FFF',
+    fontSize: 38,
+    fontWeight: '700',
+    fontVariant: ['tabular-nums'],
+  },
+  blinkTitle: {
+    color: '#FFF',
+    fontSize: 22,
+    fontWeight: '700',
+    marginBottom: 6,
+  },
+  blinkSub: {
+    color: '#AAA',
+    fontSize: 14,
+    textAlign: 'center',
+    paddingHorizontal: 32,
+  },
   resultCard: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: '#0F0F0F',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    backgroundColor: '#0E0E12',
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    borderTopWidth: 1,
+    borderColor: '#222',
     padding: 32,
-    paddingBottom: 48,
+    paddingBottom: 52,
     alignItems: 'center',
   },
   resultIcon: {
-    fontSize: 64,
-    marginBottom: 8,
+    fontSize: 56,
+    marginBottom: 10,
   },
   successColor: { color: '#00C896' },
   failColor:    { color: '#FF4444' },
   warnColor:    { color: '#FFB020' },
   resultName: {
     color: '#FFF',
-    fontSize: 28,
-    fontWeight: '700',
+    fontSize: 30,
+    fontWeight: '800',
     textAlign: 'center',
   },
   resultTitle: {
@@ -563,28 +770,29 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   resultConf: {
-    color: '#888',
-    fontSize: 16,
+    color: '#666',
+    fontSize: 15,
     marginTop: 6,
   },
   resultSub: {
-    color: '#888',
-    fontSize: 15,
+    color: '#666',
+    fontSize: 14,
     textAlign: 'center',
     marginTop: 8,
+    paddingHorizontal: 16,
   },
   latencyBadge: {
-    backgroundColor: '#1A1A1A',
+    backgroundColor: 'rgba(0,200,150,0.1)',
     borderWidth: 1,
     borderColor: '#00C896',
     borderRadius: 20,
-    paddingHorizontal: 14,
-    paddingVertical: 5,
-    marginTop: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    marginTop: 14,
   },
   latencyText: {
     color: '#00C896',
-    fontSize: 13,
-    fontWeight: '600',
+    fontSize: 14,
+    fontWeight: '700',
   },
 });

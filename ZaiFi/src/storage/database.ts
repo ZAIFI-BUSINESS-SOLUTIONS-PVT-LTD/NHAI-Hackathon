@@ -282,3 +282,25 @@ export async function removeSyncQueueItem(id: string): Promise<void> {
   const db = await getDb();
   await db.executeSql('DELETE FROM sync_queue WHERE id = ?', [id]);
 }
+
+// ── Purge (T17) ───────────────────────────────────────────────────────────────
+
+export async function purgeSyncedAttendanceLogs(): Promise<number> {
+  const db = await getDb();
+  const [countResult] = await db.executeSql(
+    'SELECT COUNT(*) as cnt FROM attendance_logs WHERE synced = 1',
+  );
+  const count: number = countResult.rows.item(0).cnt;
+  await db.executeSql('DELETE FROM attendance_logs WHERE synced = 1');
+  return count;
+}
+
+export async function clearProcessedSyncQueue(ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  const db = await getDb();
+  const placeholders = ids.map(() => '?').join(', ');
+  await db.executeSql(
+    `DELETE FROM sync_queue WHERE id IN (${placeholders})`,
+    ids,
+  );
+}

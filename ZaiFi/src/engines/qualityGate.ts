@@ -6,11 +6,12 @@ export interface QualityResult {
 }
 
 // Face bounding box area must be at least this fraction of the frame.
-const MIN_FACE_AREA_RATIO = 0.10;
+// 0.02 = face only needs ~14% wide x 14% tall (arm's-length on Redmi passes).
+const MIN_FACE_AREA_RATIO = 0.02;
 
-// Face center must fall within this inner band of the frame [margin, 1-margin].
-// 0.20 means the center 60% of the frame is accepted.
-const CENTER_MARGIN = 0.20;
+// Face center must fall within [margin, 1-margin] on each axis.
+// 0.10 = centre 80% of frame accepted (was 60% with old 0.20 margin).
+const CENTER_MARGIN = 0.10;
 
 export function checkQuality(
   box: BoundingBox,

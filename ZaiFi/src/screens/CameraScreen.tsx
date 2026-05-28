@@ -6,7 +6,7 @@ import {
   useFrameOutput,
   type Frame,
 } from 'react-native-vision-camera';
-import { useRunOnJS } from 'react-native-worklets-core';
+import { runOnJS } from 'react-native-worklets';
 import { useTensorflowModel } from 'react-native-fast-tflite';
 import {
   runFaceDetection,
@@ -33,12 +33,11 @@ export function CameraScreen({ onFaceDetected }: Props) {
     if (!hasPermission) requestPermission();
   }, [hasPermission, requestPermission]);
 
-  const updateBox = useRunOnJS(
+  const updateBox = useCallback(
     (result: FaceDetectionResult | null) => {
       setDetectedBox(result);
       onFaceDetected?.(result);
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [onFaceDetected],
   );
 
@@ -63,9 +62,9 @@ export function CameraScreen({ onFaceDetected }: Props) {
 
       if (result) {
         const quality = checkQuality(result.box, frame.width, frame.height);
-        updateBox(quality.passed ? result : null);
+        runOnJS(updateBox)(quality.passed ? result : null);
       } else {
-        updateBox(null);
+        runOnJS(updateBox)(null);
       }
 
       frame.dispose();

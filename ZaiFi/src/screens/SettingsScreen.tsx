@@ -66,7 +66,7 @@ export function SettingsScreen() {
     <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
 
       {/* ── Match Threshold ─────────────────────────────────────── */}
-      <Text style={styles.sectionTitle}>MATCH THRESHOLD</Text>
+      <View style={[styles.sectionRow]}><View style={[styles.sectionDot, { backgroundColor: '#00C896' }]} /><Text style={styles.sectionTitle}>MATCH THRESHOLD</Text></View>
       <View style={styles.card}>
         <View style={styles.thresholdRow}>
           <TouchableOpacity
@@ -105,7 +105,7 @@ export function SettingsScreen() {
       </View>
 
       {/* ── AI Models ────────────────────────────────────────────── */}
-      <Text style={styles.sectionTitle}>AI MODELS</Text>
+      <View style={styles.sectionRow}><View style={[styles.sectionDot, { backgroundColor: '#4B7BEC' }]} /><Text style={styles.sectionTitle}>AI MODELS</Text></View>
       <View style={styles.card}>
         {MODELS.map((m, i) => (
           <View
@@ -128,7 +128,7 @@ export function SettingsScreen() {
       </View>
 
       {/* ── Connectivity ─────────────────────────────────────────── */}
-      <Text style={styles.sectionTitle}>CONNECTIVITY</Text>
+      <View style={styles.sectionRow}><View style={[styles.sectionDot, { backgroundColor: '#0088FF' }]} /><Text style={styles.sectionTitle}>CONNECTIVITY</Text></View>
       <View style={styles.card}>
         <View style={styles.connRow}>
           <View style={[styles.connDot, isOnline ? styles.onlineDot : styles.offlineDot]} />
@@ -142,7 +142,7 @@ export function SettingsScreen() {
       </View>
 
       {/* ── Performance Targets ──────────────────────────────────── */}
-      <Text style={styles.sectionTitle}>PERFORMANCE TARGETS</Text>
+      <View style={styles.sectionRow}><View style={[styles.sectionDot, { backgroundColor: '#FFB020' }]} /><Text style={styles.sectionTitle}>PERFORMANCE TARGETS</Text></View>
       <View style={styles.card}>
         {PERF_TARGETS.map((p, i) => (
           <View
@@ -165,27 +165,37 @@ export function SettingsScreen() {
 const styles = StyleSheet.create({
   scroll: {
     flex: 1,
-    backgroundColor: '#0A0A0A',
+    backgroundColor: '#080808',
   },
   content: {
     padding: 20,
-    paddingBottom: 48,
+    paddingBottom: 52,
+  },
+  sectionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 28,
+    marginBottom: 10,
+    gap: 8,
+  },
+  sectionDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
   sectionTitle: {
-    color: '#555',
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 1.2,
-    marginTop: 24,
-    marginBottom: 10,
-    marginLeft: 4,
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1.8,
+    color: '#888',
   },
   card: {
-    backgroundColor: '#111',
-    borderRadius: 14,
+    backgroundColor: '#111217',
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#222',
-    padding: 16,
+    borderColor: '#1E1E2A',
+    padding: 18,
+    overflow: 'hidden',
   },
 
   // Threshold adjuster
@@ -193,48 +203,48 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 12,
+    marginBottom: 14,
   },
   adjBtn: {
-    width: 44,
-    height: 44,
-    backgroundColor: '#1A1A1A',
+    width: 48,
+    height: 48,
+    backgroundColor: '#1A1A22',
     borderWidth: 1,
-    borderColor: '#333',
-    borderRadius: 10,
+    borderColor: '#2A2A3A',
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
   adjBtnDisabled: {
-    opacity: 0.3,
+    opacity: 0.25,
   },
   adjBtnText: {
     color: '#FFF',
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: '300',
-    lineHeight: 26,
+    lineHeight: 28,
   },
   thresholdValue: {
     alignItems: 'center',
   },
   thresholdNumber: {
     color: '#00C896',
-    fontSize: 40,
-    fontWeight: '700',
-    lineHeight: 44,
+    fontSize: 44,
+    fontWeight: '800',
+    lineHeight: 48,
   },
   thresholdPct: {
-    color: '#666',
+    color: '#555',
     fontSize: 12,
-    marginTop: 2,
+    marginTop: 3,
   },
   cardHint: {
     color: '#555',
     fontSize: 12,
-    lineHeight: 17,
+    lineHeight: 18,
   },
   resetLink: {
-    marginTop: 10,
+    marginTop: 12,
   },
   resetText: {
     color: '#00C896',
@@ -246,56 +256,60 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 10,
+    paddingVertical: 11,
   },
   modelRowBorder: {
     borderBottomWidth: 1,
-    borderBottomColor: '#1C1C1C',
+    borderBottomColor: '#181820',
   },
   modelLeft: {
     flex: 1,
   },
   modelName: {
-    color: '#FFF',
+    color: '#EEE',
     fontSize: 14,
     fontWeight: '600',
   },
   modelPurpose: {
     color: '#555',
     fontSize: 12,
-    marginTop: 2,
+    marginTop: 3,
   },
   modelSize: {
-    color: '#888',
+    color: '#4B7BEC',
     fontSize: 13,
-    fontWeight: '500',
+    fontWeight: '600',
+    backgroundColor: 'rgba(75,123,236,0.1)',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
   },
   totalRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     marginTop: 10,
-    paddingTop: 10,
+    paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: '#222',
+    borderTopColor: '#1E1E2A',
   },
   totalLabel: {
-    color: '#AAA',
+    color: '#BBB',
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   totalBadge: {
     backgroundColor: 'rgba(0,200,150,0.12)',
     borderWidth: 1,
     borderColor: '#00C896',
     borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 3,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
   },
   totalBadgeText: {
     color: '#00C896',
     fontSize: 13,
-    fontWeight: '700',
+    fontWeight: '800',
   },
 
   // Connectivity
@@ -318,7 +332,7 @@ const styles = StyleSheet.create({
   },
   connText: {
     fontSize: 15,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   offlineText: {
     color: '#00C896',
@@ -331,26 +345,31 @@ const styles = StyleSheet.create({
   perfRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingVertical: 9,
+    alignItems: 'center',
+    paddingVertical: 10,
   },
   perfRowBorder: {
     borderBottomWidth: 1,
-    borderBottomColor: '#1C1C1C',
+    borderBottomColor: '#181820',
   },
   perfLabel: {
-    color: '#AAA',
+    color: '#999',
     fontSize: 13,
   },
   perfTarget: {
     color: '#00C896',
-    fontSize: 13,
-    fontWeight: '600',
+    fontSize: 12,
+    fontWeight: '700',
+    backgroundColor: 'rgba(0,200,150,0.08)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
   },
 
   footer: {
-    color: '#333',
+    color: '#2A2A2A',
     fontSize: 11,
     textAlign: 'center',
-    marginTop: 32,
+    marginTop: 36,
   },
 });

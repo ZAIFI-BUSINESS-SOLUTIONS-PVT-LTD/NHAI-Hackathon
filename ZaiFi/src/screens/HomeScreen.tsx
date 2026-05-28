@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Animated, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import NetInfo, { type NetInfoState } from '@react-native-community/netinfo';
 import { getUnsyncedLogs } from '../storage/database';
@@ -9,10 +9,19 @@ interface Props {
 }
 
 export function HomeScreen({ navigation }: Props) {
-  const [isOnline, setIsOnline] = useState(false);
+  const [isOnline, setIsOnline]           = useState(false);
   const [unsyncedCount, setUnsyncedCount] = useState(0);
+  const glowAnim = useRef(new Animated.Value(0.6)).current;
 
-  // Live network status
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(glowAnim, { toValue: 1,   duration: 2000, useNativeDriver: true }),
+        Animated.timing(glowAnim, { toValue: 0.6, duration: 2000, useNativeDriver: true }),
+      ]),
+    ).start();
+  }, [glowAnim]);
+
   useEffect(() => {
     const unsub = NetInfo.addEventListener((state: NetInfoState) => {
       setIsOnline(!!(state.isConnected && state.isInternetReachable));
@@ -23,7 +32,6 @@ export function HomeScreen({ navigation }: Props) {
     return () => unsub();
   }, []);
 
-  // Refresh pending count whenever this screen comes into focus
   useFocusEffect(
     useCallback(() => {
       getUnsyncedLogs()
@@ -34,66 +42,98 @@ export function HomeScreen({ navigation }: Props) {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.logo}>ZAi-Fi</Text>
-        <Text style={styles.tagline}>Offline Biometric Authentication</Text>
 
-        {/* Live online / offline pill */}
-        <View style={[styles.statusPill, isOnline ? styles.onlinePill : styles.offlinePill]}>
-          <View style={[styles.statusDot, isOnline ? styles.onlineDot : styles.offlineDot]} />
-          <Text style={[styles.statusPillText, isOnline ? styles.onlineText : styles.offlineText]}>
-            {isOnline ? 'Online · Sync Active' : 'Offline Ready'}
+      {/* HERO */}
+      <View style={styles.hero}>
+        <Animated.View style={[styles.glowRing, { opacity: glowAnim }]} />
+        <View style={styles.logoWrap}>
+          <Text style={styles.logoIcon}>{'🛡'}</Text>
+        </View>
+        <Text style={styles.logo}>ZAi-Fi</Text>
+        <Text style={styles.tagline}>Edge AI  Offline Biometric Auth</Text>
+        <View style={[styles.statusPill, isOnline ? styles.pillOnline : styles.pillOffline]}>
+          <View style={[styles.statusDot, isOnline ? styles.dotOnline : styles.dotOffline]} />
+          <Text style={[styles.statusText, isOnline ? styles.textOnline : styles.textOffline]}>
+            {isOnline ? 'Online  Sync Active' : 'Offline Ready'}
           </Text>
         </View>
       </View>
 
+      {/* ACTION CARDS */}
       <View style={styles.actions}>
-        {/* Primary: Authenticate */}
+
+        {/* Authenticate */}
         <TouchableOpacity
-          style={[styles.btn, styles.primaryBtn]}
+          style={styles.primaryCard}
           onPress={() => navigation.navigate('Authenticate')}
+          activeOpacity={0.88}
         >
-          <Text style={styles.primaryBtnText}>Authenticate</Text>
-          <Text style={styles.btnSub}>Verify identity in &lt; 1 sec</Text>
-        </TouchableOpacity>
-
-        {/* Secondary: Enroll */}
-        <TouchableOpacity
-          style={[styles.btn, styles.secondaryBtn]}
-          onPress={() => navigation.navigate('Enroll')}
-        >
-          <Text style={styles.secondaryBtnText}>Enroll New Worker</Text>
-          <Text style={[styles.btnSub, styles.secondaryBtnSub]}>
-            Register face for offline auth
-          </Text>
-        </TouchableOpacity>
-
-        {/* Tertiary: Attendance Log */}
-        <TouchableOpacity
-          style={[styles.btn, styles.secondaryBtn]}
-          onPress={() => navigation.navigate('AttendanceLogs')}
-        >
-          <View style={styles.btnRow}>
-            <Text style={styles.secondaryBtnText}>Attendance Log</Text>
-            {unsyncedCount > 0 && (
-              <View style={styles.badge}>
-                <Text style={styles.badgeText}>{unsyncedCount}</Text>
-              </View>
-            )}
+          <View style={styles.cardInner}>
+            <View style={[styles.cardIcon, { backgroundColor: 'rgba(0,200,150,0.18)' }]}>
+              <Text style={styles.cardIconText}>{'🔍'}</Text>
+            </View>
+            <View style={styles.cardText}>
+              <Text style={styles.primaryCardTitle}>Authenticate</Text>
+              <Text style={styles.primaryCardSub}>Verify identity  &lt; 1 sec</Text>
+            </View>
+            <Text style={[styles.cardArrow, { color: 'rgba(0,0,0,0.4)' }]}>{'›'}</Text>
           </View>
-          <Text style={[styles.btnSub, styles.secondaryBtnSub]}>
-            {unsyncedCount > 0
-              ? `${unsyncedCount} record${unsyncedCount > 1 ? 's' : ''} pending sync`
-              : 'View auth history · All synced'}
-          </Text>
+        </TouchableOpacity>
+
+        {/* Enroll */}
+        <TouchableOpacity
+          style={styles.secondaryCard}
+          onPress={() => navigation.navigate('Enroll')}
+          activeOpacity={0.88}
+        >
+          <View style={[styles.cardAccentBar, { backgroundColor: '#4B7BEC' }]} />
+          <View style={styles.cardInner}>
+            <View style={[styles.cardIcon, { backgroundColor: 'rgba(75,123,236,0.15)' }]}>
+              <Text style={styles.cardIconText}>{'👤'}</Text>
+            </View>
+            <View style={styles.cardText}>
+              <Text style={styles.secondaryCardTitle}>Enroll New Worker</Text>
+              <Text style={styles.secondaryCardSub}>Register face for offline auth</Text>
+            </View>
+            <Text style={[styles.cardArrow, { color: '#4B7BEC' }]}>{'›'}</Text>
+          </View>
+        </TouchableOpacity>
+
+        {/* Attendance Log */}
+        <TouchableOpacity
+          style={styles.secondaryCard}
+          onPress={() => navigation.navigate('AttendanceLogs')}
+          activeOpacity={0.88}
+        >
+          <View style={[styles.cardAccentBar, { backgroundColor: unsyncedCount > 0 ? '#FFB020' : '#333' }]} />
+          <View style={styles.cardInner}>
+            <View style={[styles.cardIcon, { backgroundColor: unsyncedCount > 0 ? 'rgba(255,176,32,0.15)' : 'rgba(80,80,80,0.2)' }]}>
+              <Text style={styles.cardIconText}>{'📋'}</Text>
+            </View>
+            <View style={styles.cardText}>
+              <Text style={styles.secondaryCardTitle}>Attendance Log</Text>
+              <Text style={styles.secondaryCardSub}>
+                {unsyncedCount > 0
+                  ? `${unsyncedCount} record${unsyncedCount > 1 ? 's' : ''} pending sync`
+                  : 'View auth history  All synced'}
+              </Text>
+            </View>
+            <View style={styles.logRight}>
+              {unsyncedCount > 0 && (
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText}>{unsyncedCount}</Text>
+                </View>
+              )}
+              <Text style={[styles.cardArrow, { color: unsyncedCount > 0 ? '#FFB020' : '#555' }]}>{'›'}</Text>
+            </View>
+          </View>
         </TouchableOpacity>
       </View>
 
-      <TouchableOpacity
-        style={styles.footerLink}
-        onPress={() => navigation.navigate('Settings')}
-      >
-        <Text style={styles.footer}>Edge AI · No Internet Required · ⚙ Settings</Text>
+      {/* FOOTER */}
+      <TouchableOpacity style={styles.footerRow} onPress={() => navigation.navigate('Settings')}>
+        <Text style={styles.footerLeft}>{'⚙'}  Settings</Text>
+        <Text style={styles.footerRight}>Hackathon 7.0  NHAI</Text>
       </TouchableOpacity>
     </View>
   );
@@ -102,25 +142,48 @@ export function HomeScreen({ navigation }: Props) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0A0A0A',
-    padding: 32,
+    backgroundColor: '#080808',
+    paddingHorizontal: 22,
     justifyContent: 'space-between',
   },
-  header: {
-    marginTop: 60,
+
+  // Hero
+  hero: {
+    marginTop: 68,
     alignItems: 'center',
   },
+  glowRing: {
+    position: 'absolute',
+    top: -20,
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+    backgroundColor: 'rgba(0,200,150,0.08)',
+    transform: [{ scale: 1.7 }],
+  },
+  logoWrap: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    backgroundColor: '#0D2B22',
+    borderWidth: 1.5,
+    borderColor: '#00C896',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 14,
+  },
+  logoIcon: { fontSize: 28 },
   logo: {
     color: '#FFFFFF',
-    fontSize: 42,
+    fontSize: 38,
     fontWeight: '800',
-    letterSpacing: 2,
+    letterSpacing: 3,
   },
   tagline: {
-    color: '#666',
-    fontSize: 14,
-    marginTop: 6,
-    letterSpacing: 0.5,
+    color: '#555',
+    fontSize: 12,
+    marginTop: 5,
+    letterSpacing: 0.8,
   },
 
   // Status pill
@@ -131,100 +194,88 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     paddingHorizontal: 14,
     paddingVertical: 6,
-    marginTop: 20,
+    marginTop: 18,
     gap: 6,
   },
-  offlinePill: {
-    backgroundColor: '#0D2B22',
-    borderColor: '#00C896',
-  },
-  onlinePill: {
-    backgroundColor: '#0D1F2D',
-    borderColor: '#0088FF',
-  },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  offlineDot: {
-    backgroundColor: '#00C896',
-  },
-  onlineDot: {
-    backgroundColor: '#0088FF',
-  },
-  statusPillText: {
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  offlineText: {
-    color: '#00C896',
-  },
-  onlineText: {
-    color: '#0088FF',
-  },
+  pillOffline: { backgroundColor: 'rgba(0,200,150,0.08)', borderColor: '#00C896' },
+  pillOnline:  { backgroundColor: 'rgba(0,136,255,0.08)', borderColor: '#0088FF' },
+  statusDot: { width: 7, height: 7, borderRadius: 4 },
+  dotOffline: { backgroundColor: '#00C896' },
+  dotOnline:  { backgroundColor: '#0088FF' },
+  statusText: { fontSize: 12, fontWeight: '600' },
+  textOffline: { color: '#00C896' },
+  textOnline:  { color: '#0088FF' },
 
-  // Action buttons
-  actions: {
-    gap: 14,
-  },
-  btn: {
-    borderRadius: 14,
-    padding: 20,
-    alignItems: 'flex-start',
-  },
-  primaryBtn: {
+  // Action cards
+  actions: { gap: 12 },
+
+  primaryCard: {
     backgroundColor: '#00C896',
+    borderRadius: 16,
+    paddingHorizontal: 18,
+    paddingVertical: 16,
   },
-  secondaryBtn: {
-    backgroundColor: '#1A1A1A',
+  secondaryCard: {
+    backgroundColor: '#111217',
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#333',
+    borderColor: '#1E1E2A',
+    paddingHorizontal: 18,
+    paddingVertical: 16,
+    overflow: 'hidden',
   },
-  primaryBtnText: {
-    color: '#000',
-    fontSize: 20,
-    fontWeight: '700',
+  cardAccentBar: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 3,
+    borderTopLeftRadius: 16,
+    borderBottomLeftRadius: 16,
   },
-  secondaryBtnText: {
-    color: '#FFF',
-    fontSize: 20,
-    fontWeight: '700',
-  },
-  btnRow: {
+  cardInner: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 14,
   },
+  cardIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cardIconText: { fontSize: 22 },
+  cardText: { flex: 1 },
+  cardArrow: {
+    fontSize: 28,
+    fontWeight: '300',
+    lineHeight: 32,
+  },
+
+  primaryCardTitle: { color: '#000', fontSize: 18, fontWeight: '800' },
+  primaryCardSub:   { color: 'rgba(0,0,0,0.55)', fontSize: 13, marginTop: 2 },
+  secondaryCardTitle: { color: '#FFFFFF', fontSize: 17, fontWeight: '700' },
+  secondaryCardSub:   { color: '#666', fontSize: 13, marginTop: 2 },
+
+  logRight: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   badge: {
     backgroundColor: '#FFB020',
     borderRadius: 10,
     paddingHorizontal: 7,
     paddingVertical: 2,
-    minWidth: 20,
+    minWidth: 22,
     alignItems: 'center',
   },
-  badgeText: {
-    color: '#000',
-    fontSize: 11,
-    fontWeight: '800',
-  },
-  btnSub: {
-    color: 'rgba(0,0,0,0.55)',
-    fontSize: 13,
-    marginTop: 4,
-  },
-  secondaryBtnSub: {
-    color: '#666',
-  },
+  badgeText: { color: '#000', fontSize: 11, fontWeight: '800' },
 
-  footerLink: {
-    marginBottom: 16,
-    alignItems: 'center',
+  // Footer
+  footerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 22,
+    paddingHorizontal: 4,
   },
-  footer: {
-    color: '#333',
-    fontSize: 12,
-    textAlign: 'center',
-  },
+  footerLeft:  { color: '#444', fontSize: 12 },
+  footerRight: { color: '#333', fontSize: 12 },
 });

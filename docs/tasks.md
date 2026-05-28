@@ -11,7 +11,7 @@
 
 ## T15 — Eye Keypoint + Blink Signal Engine
 
-**Status:** `[ ] TODO`
+**Status:** `[x] DONE`
 **Phase:** 6 — Active Liveness Challenge
 **Estimated time:** 2.5 hours
 **Dependencies:** T04 (BlazeFace face detection already wired)
@@ -72,7 +72,7 @@ classic EAR from the 6-point eye model (indices 33,133,160,158,144,153 for left 
 
 ## T16 — Active Blink Challenge Gate (AuthScreen)
 
-**Status:** `[ ] TODO`
+**Status:** `[x] DONE`
 **Phase:** 6 — Active Liveness Challenge
 **Estimated time:** 3.5 hours
 **Dependencies:** T15, T09 (MiniFASNet passive liveness)
@@ -145,7 +145,7 @@ Show "Please Blink" overlay + 5 second countdown
 
 ## T17 — Sync Purge After Successful Upload
 
-**Status:** `[ ] TODO`
+**Status:** `[x] DONE`
 **Phase:** 7 — Sync & Purge
 **Estimated time:** 1.5 hours
 **Dependencies:** T12 (sync queue engine)
@@ -194,7 +194,7 @@ screen is not blank immediately during the demo — show the records with a
 
 ## T18 — BiometricAuth Public Module API
 
-**Status:** `[ ] TODO`
+**Status:** `[x] DONE`
 **Phase:** 8 — Datalake 3.0 Integration Layer
 **Estimated time:** 3 hours
 **Dependencies:** T10, T11, T12
@@ -268,7 +268,7 @@ export const BiometricAuth = {
 
 ## T19 — Datalake 3.0 Integration Guide
 
-**Status:** `[ ] TODO`
+**Status:** `[x] DONE`
 **Phase:** 8 — Datalake 3.0 Integration Layer
 **Estimated time:** 1.5 hours
 **Dependencies:** T18
@@ -319,7 +319,7 @@ into an existing React Native app like Datalake 3.0.
 
 ## T20 — Performance Benchmarks Documentation
 
-**Status:** `[ ] TODO`
+**Status:** `[x] DONE`
 **Phase:** 9 — Validation & Compliance
 **Estimated time:** 2 hours
 **Dependencies:** T16 (blink gate), T17 (purge)
@@ -373,7 +373,7 @@ failure analysis, and a brief note on MobileFaceNet training data diversity.
 
 ## T21 — iOS 12 Deployment Target Fix
 
-**Status:** `[ ] TODO`
+**Status:** `[x] DONE`
 **Phase:** 9 — Validation & Compliance
 **Estimated time:** 0.5 hours
 **Dependencies:** None
@@ -411,13 +411,13 @@ all relevant config files to declare iOS 12 compatibility.
 
 | Task | Name | Phase | Est. | Status |
 |---|---|---|---|---|
-| T15 | Eye Keypoint + Blink Signal Engine | 6 | 2.5h | `[ ] TODO` |
-| T16 | Active Blink Challenge Gate (AuthScreen) | 6 | 3.5h | `[ ] TODO` |
-| T17 | Sync Purge After Successful Upload | 7 | 1.5h | `[ ] TODO` |
-| T18 | BiometricAuth Public Module API | 8 | 3.0h | `[ ] TODO` |
-| T19 | Datalake 3.0 Integration Guide | 8 | 1.5h | `[ ] TODO` |
-| T20 | Performance Benchmarks Documentation | 9 | 2.0h | `[ ] TODO` |
-| T21 | iOS 12 Deployment Target Fix | 9 | 0.5h | `[ ] TODO` |
+| T15 | Eye Keypoint + Blink Signal Engine | 6 | 2.5h | `[x] DONE` |
+| T16 | Active Blink Challenge Gate (AuthScreen) | 6 | 3.5h | `[x] DONE` |
+| T17 | Sync Purge After Successful Upload | 7 | 1.5h | `[x] DONE` |
+| T18 | BiometricAuth Public Module API | 8 | 3.0h | `[x] DONE` |
+| T19 | Datalake 3.0 Integration Guide | 8 | 1.5h | `[x] DONE` |
+| T20 | Performance Benchmarks Documentation | 9 | 2.0h | `[x] DONE` |
+| T21 | iOS 12 Deployment Target Fix | 9 | 0.5h | `[x] DONE` |
 | | **Phase 2 Total** | | **~14.5h** | |
 
 ---
